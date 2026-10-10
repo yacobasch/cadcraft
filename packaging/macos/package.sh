@@ -56,6 +56,16 @@ echo "==> CADCraft $VERSION for macOS ($ARCH), identity: $IDENTITY, notarize: $N
 
 # ---- build -------------------------------------------------------------------------------------
 if [ "$SKIP_BUILD" = 0 ]; then
+  # A universal build needs both Rust targets; add any that rustup is missing.
+  if command -v rustup >/dev/null; then
+    installed="$(cd "$ROOT" && rustup target list --installed)"
+    for t in "${TARGETS[@]}"; do
+      if ! grep -qx "$t" <<<"$installed"; then
+        echo "==> installing Rust target $t"
+        (cd "$ROOT" && rustup target add "$t")
+      fi
+    done
+  fi
   args=()
   for t in "${TARGETS[@]}"; do args+=(--target "$t"); done
   (cd "$ROOT" && cargo build --release --locked -p cadcraft -p cadcraft-cli "${args[@]}")
