@@ -50,6 +50,27 @@ fn blank(s: &str) -> bool {
     s.replace("\\~", " ").chars().all(char::is_whitespace)
 }
 
+/// Characters one MTEXT paragraph shows: formatting codes (`\fArial|b1;`, `\H0.7x;`, `\L`, ...)
+/// and grouping braces take no room; escapes (`\\`, `\{`, `\~`) show one character.
+fn mtext_chars(line: &str) -> usize {
+    let mut n = 0;
+    let mut it = line.chars();
+    while let Some(c) = it.next() {
+        match c {
+            '{' | '}' => {}
+            '\\' => match it.next() {
+                Some('L' | 'l' | 'O' | 'o' | 'K' | 'k') | None => {}
+                Some('f' | 'F' | 'H' | 'h' | 'C' | 'c' | 'T' | 't' | 'Q' | 'q' | 'W' | 'w' | 'A' | 'a' | 'p') => {
+                    it.by_ref().find(|&c| c == ';');
+                }
+                Some(_) => n += 1,
+            },
+            _ => n += 1,
+        }
+    }
+    n
+}
+
 pub fn entity_bounds(d: &Drawing, e: &Entity, depth: usize) -> Bounds2 {
     bounds_in(d, e, depth, &mut HashMap::new())
 }
@@ -66,8 +87,12 @@ fn bounds_in(d: &Drawing, e: &Entity, depth: usize, blocks: &mut HashMap<String,
         EntityKind::AttDef(a) => text_box(&a.text, a.tag.chars().count()),
         EntityKind::MText(t) => {
             let lines = t.contents.split("\\P").count().max(1);
-            let longest = t.contents.split("\\P").map(|l| l.chars().count()).max().unwrap_or(1);
-            let w = if t.width > 0.0 { t.width } else { t.height * 0.8 * longest as f64 };
+            let longest = t.contents.split("\\P").map(mtext_chars).max().unwrap_or(1).max(1);
+            // The text is no wider than its longest paragraph, nor than the box it wraps in. Real
+            // files set huge box widths for "no wrap" (37 million units on a 150k-unit plan), so the
+            // box alone would send ZOOM Extents far off and shrink the drawing to a dot.
+            let text_w = t.height * 0.8 * longest as f64;
+            let w = if t.width > 0.0 { text_w.min(t.width) } else { text_w };
             let h = t.height * 1.66 * lines as f64;
             let (dx, dy) = match t.attach {
                 2 | 5 | 8 => (-w / 2.0, 0.0),

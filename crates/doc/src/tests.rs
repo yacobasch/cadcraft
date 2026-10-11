@@ -413,6 +413,26 @@ fn non_blank_text_and_mtext_have_bounds() {
     }
 }
 
+/// A title MTEXT with a "no wrap" box 37 million units wide (seen in a real DWG) must not stretch
+/// the extents past its text: ZOOM Extents would shrink the drawing to an invisible dot.
+#[test]
+fn mtext_bounds_follow_the_text_not_a_huge_box() {
+    let d = Drawing::new_imperial();
+    let mut kind = mtext_kind("{\\fArial|b1|i0|c0|p34;\\H0.9722x;\\LROOF PLAN\\P\\H0.7143x;sc 1:100 }");
+    if let EntityKind::MText(t) = &mut kind {
+        t.width = 36_987_375.5;
+    }
+    let b = entity_bounds(&d, &Entity::new(Handle(1), kind), 0);
+    // "ROOF PLAN" / "sc 1:100 ": 9 characters at height 2, starting at x = 10.
+    assert!(b.max.x > 20.0 && b.max.x < 40.0, "{b:?}");
+    // A narrow box still bounds a long paragraph.
+    let mut kind = mtext_kind("a long paragraph that wraps");
+    if let EntityKind::MText(t) = &mut kind {
+        t.width = 5.0;
+    }
+    assert_eq!(entity_bounds(&d, &Entity::new(Handle(1), kind), 0).max.x, 15.0);
+}
+
 #[test]
 fn invisible_dimblock_entity_is_ignored_in_dimension_extents() {
     // Dynamic blocks keep dimensional constraints on layer *ADSK_CONSTRAINTS (group 60 = 1).
